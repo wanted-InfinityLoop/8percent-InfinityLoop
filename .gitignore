@@ -356,6 +356,4 @@ zsdoc/data
 /tests/_output/*
 !/tests/_output/.gitkeep
 
-config.py
-db_uploader.py
-wanted_temp_data.csv
+my_settings.py

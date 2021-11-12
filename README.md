@@ -362,7 +362,10 @@ http://3.37.8.131:8000/transactions/withdrawal
 - response   
 
 ```
-
+{
+    "message": "Success",
+    "user balance": 25000
+}
 ```
 
 <br>

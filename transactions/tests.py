@@ -3,38 +3,52 @@ import jwt
 
 from django.test import TestCase, Client
 
-from transactions.models import *
 from users.models        import User
+from transactions.models import *
 from my_settings         import MY_SECRET_KEY
+from core.validation     import algorithm
 
 
 class DepositViewTest(TestCase):
     def setUp(self):
-        Bank.objects.create(id=1, name="농협")
+        self.client = Client()
+
+        TransactionType.objects.create(id=1, name="DEPOSIT")
+
+        Bank.objects.create(id=1, name="농협은행")
 
         Deposit.objects.create(
-            id=1,
+            id                =1,
             withdrawal_account="914802-01-585494",
             withdrawal_bank_id=1,
-            deposit_account="914802-02-333333",
-            deposit_bank_id=1,
-            balance=1000
+            deposit_account   ="914802-02-333333",
+            deposit_bank_id   =1,
+            balance           =1000,
         )
+
         User.objects.create(
-            id=1,
-            name="홍길동",
-            email="dkfkffkf115@naver.com",
-            password="@wjddl0616",
-            deposit_id=1
+            id        =1,
+            name      ="홍길동",
+            email     ="dkfkffkf115@naver.com",
+            password  ="@wjddl0616",
+            deposit_id=1,
         )
+
         self.user_token = jwt.encode(
             {
-                "id": 1,
+                "user_id": 1,
             },
             MY_SECRET_KEY,
-            algorithm="HS256",
+            algorithm,
         )
-        TransactionType.objects.create(id=1, name="DEPOSIT")
+
+        self.access_token2 = jwt.encode(
+            {
+                "user_id": 2,
+            },
+            MY_SECRET_KEY,
+            algorithm,
+        )
 
     def tearDown(self):
         User.objects.all().delete()
@@ -42,228 +56,351 @@ class DepositViewTest(TestCase):
         Bank.objects.all().delete()
         TransactionType.objects.all().delete()
 
-    def test_deposit_post_success(self):
-        client = Client()
+    def test_post_deposit_success(self):
         header = {"HTTP_Authorization": f"Bearer {self.user_token}"}
-        data = {
-            "amounts": 1000,
-            "information": "입금테스트"
-            }
-        response = client.post(
+        data = {"amounts": 1000, "information": "입금테스트"}
+
+        response = self.client.post(
             "/transactions/deposit",
             json.dumps(data),
             content_type="application/json",
-            **header
+            **header,
         )
+
         self.assertEqual(response.status_code, 201)
         self.assertEqual(
             response.json(),
             {
-                "message"                  : "Success", 
-                "user balance"             : 2000, 
-                "user transaction type"    : "DEPOSIT",
-                "user transaction amounts" : 1000,
-                "user transactions balance": 2000
-            }
+                "message": "SUCCESS",
+                "balance": 2000,
+            },
         )
 
-    def test_deposit_post_invalid_amounts(self):
-        client = Client()
-        header = {"HTTP_Authorization": {"HTTP_Authorization": f"Bearer {self.user_token}"}}
-        data = {
-                "amounts": -1000,
-                "information": "입금테스트"
-            }
-        response = client.post(
-            "/transactions/deposit",
-            json.dumps(data),
-            content_type="application/json",
-            **header
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"message": "Invalid Amount"})
-
-    def test_deposit_post_type_error(self):
-        client = Client()
+    def test_post_deposit_invalid_input_format_negative_number(self):
         header = {"HTTP_Authorization": f"Bearer {self.user_token}"}
-        data = {
-                "amounts": "1000",
-                "information": "입금테스트"
-            }
-        response = client.post(
-            "/transactions/deposit",
-            json.dumps(data),
-            content_type="application/json",
-            **header
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"message": "Type Error"})
+        data = {"amounts": -1000, "information": "입금테스트"}
 
-    def test_deposit_post_key_error(self):
-        client = Client()
-        header = {"HTTP_Authorization": f"Bearer {self.user_token}"}
-        data = {
-            "amount": 3000,
-            "information": "입금테스트"
-            }
-        response = client.post(
+        response = self.client.post(
             "/transactions/deposit",
             json.dumps(data),
             content_type="application/json",
-            **header
+            **header,
         )
+
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"message": "Key Error"})
+        self.assertEqual(response.json(), {"message": "INVALID_INPUT_FORMAT"})
+
+    def test_post_deposit_invalid_input_format_float_number(self):
+        header = {"HTTP_Authorization": f"Bearer {self.user_token}"}
+        data = {"amounts": 1000.8, "information": "입금테스트"}
+
+        response = self.client.post(
+            "/transactions/deposit",
+            json.dumps(data),
+            content_type="application/json",
+            **header,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"message": "INVALID_INPUT_FORMAT"})
+
+    def test_post_deposit_type_error(self):
+        header = {"HTTP_Authorization": f"Bearer {self.user_token}"}
+        data = {"amounts": "1000", "information": "입금테스트"}
+
+        response = self.client.post(
+            "/transactions/deposit",
+            json.dumps(data),
+            content_type="application/json",
+            **header,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"message": "TYPE_ERROR"})
+
+    def test_post_deposit_key_error(self):
+        header = {"HTTP_Authorization": f"Bearer {self.user_token}"}
+        data = {"amount": 3000, "information": "입금테스트"}
+
+        response = self.client.post(
+            "/transactions/deposit",
+            json.dumps(data),
+            content_type="application/json",
+            **header,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"message": "KEY_ERROR"})
+
+    def test_post_deposit_invalid_user(self):
+        header = {"HTTP_Authorization": f"Bearer {self.access_token2}"}
+        data = {"amounts": 5000, "information": "입금 테스트"}
+
+        response = self.client.post(
+            "/transactions/deposit",
+            json.dumps(data),
+            content_type="application/json",
+            **header,
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"message": "INVALID_USER"})
 
 
 class WithdrawalTest(TestCase):
     def setUp(self):
+        self.client = Client()
+
         TransactionType.objects.create(id=2, name="출금")
-        
+
         Bank.objects.create(id=1, name="농협은행")
-        
+
         Deposit.objects.create(
-            id=1,
+            id                =1,
             withdrawal_account="111-222-333",
             withdrawal_bank_id=1,
-            deposit_account="444-555-666",
-            deposit_bank_id=1,
-            balance=30000,
+            deposit_account   ="444-555-666",
+            deposit_bank_id   =1,
+            balance           =30000,
         )
 
         User.objects.create(
-            id=2,
-            name="지윤",
-            email="test@naver.com",
-            password="1234!@qw",
+            id        =1, 
+            name      ="지윤", 
+            email     ="test@naver.com", 
+            password  ="1234!@qw", 
             deposit_id=1
         )
 
         self.access_token1 = jwt.encode(
             {
-                "id": 2,
+                "user_id": 1,
             },
             MY_SECRET_KEY,
-            algorithm="HS256",
+            algorithm,
         )
 
-        self.access_token2 = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ"
+        self.access_token2 = jwt.encode(
+            {
+                "user_id": 2,
+            },
+            MY_SECRET_KEY,
+            algorithm,
+        )
 
     def tearDown(self):
         User.objects.all().delete()
         Deposit.objects.all().delete()
         Bank.objects.all().delete()
         TransactionType.objects.all().delete()
-    
-    def test_withdrawal_post_success(self):
-        client = Client()
+
+    def test_post_withdrawal_success(self):
         header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
-        data = {
-            "amounts"         : 3000,
-            "information"     : "출금 테스트"
-        }
-        response = client.post(
-            "/transactions/withdrawal", 
-            json.dumps(data), 
-            content_type = "application/json",
-            **header
+        data = {"amounts": 3000, "information": "출금 테스트"}
+
+        response = self.client.post(
+            "/transactions/withdrawal",
+            json.dumps(data),
+            content_type="application/json",
+            **header,
         )
+
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json(),{"message": "Success", "거래 후 잔액": 27000})
+        self.assertEqual(response.json(), {"message": "SUCCESS", "balance": 27000})
 
-    def test_withdrawal_post_invalid_input(self):
-        client = Client()
+    def test_post_withdrawal_invalid_input_negative_number(self):
         header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
-        data = {
-            "amounts"         : -3000,
-            "information"     : "출금 테스트"
-        }
-        response = client.post(
-            "/transactions/withdrawal",
-            json.dumps(data), 
-            content_type = "application/json",
-            **header
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"message": "Invalid Input"})
+        data = {"amounts": -3000, "information": "출금 테스트"}
 
-    def test_withdrawal_post_no_input(self):
-        client = Client()
-        header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
-        data = {
-            "amounts"         : 3000,
-            "information"     : ""
-        }
-        response = client.post(
+        response = self.client.post(
             "/transactions/withdrawal",
             json.dumps(data),
             content_type="application/json",
-            **header
+            **header,
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"message": "No Input"})
-    
-    def test_withdrawal_post_exceed_balance(self):
-        client = Client()
-        header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
-        data = {
-            "amounts"         : 50000,
-            "information"     : "출금 테스트"
-        }
-        response = client.post(
-            "/transactions/withdrawal",
-            json.dumps(data),
-            content_type="application/json",
-            **header
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"message": "Wrong Request"})
 
-    def test_withdrawal_post_type_error(self):
-        client = Client()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"message": "INVALID_INPUT_FORMAT"})
+
+    def test_post_withdrawal_invalid_input_float_number(self):
         header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
-        data = {
-            "amounts"         : "50000",
-            "information"     : "출금 테스트"
-        }
-        response = client.post(
+        data = {"amounts": 3000.8, "information": "출금 테스트"}
+
+        response = self.client.post(
             "/transactions/withdrawal",
             json.dumps(data),
             content_type="application/json",
-            **header
+            **header,
         )
+
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"message": "Type Error"})
-    
-    def test_withdrawal_post_key_error(self):
-        client = Client()
+        self.assertEqual(response.json(), {"message": "INVALID_INPUT_FORMAT"})
+
+    def test_post_withdrawal_exceed_balance(self):
         header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
-        data = {
-            "amount"          : 50000,
-            "information"     : "출금 테스트"
-        }
-        response = client.post(
+        data = {"amounts": 50000, "information": "출금 테스트"}
+
+        response = self.client.post(
             "/transactions/withdrawal",
             json.dumps(data),
             content_type="application/json",
-            **header
+            **header,
         )
+
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"message": "Key Error"})
-    
-    # def test_withdrawal_user_does_not_exist(self):
-    #     client = Client()
-    #     header = {"HTTP_Authorization": f"Bearer {self.access_token2}"}
-    #     data = {
-    #         "amounts"         : 5000,
-    #         "information"     : "출금 테스트"
-    #     }
-    #     response = client.post(
-    #         "/transactions/withdrawal",
-    #         json.dumps(data),
-    #         content_type="application/json",
-    #         **header
-    #     )
-    #     self.assertEqual(response.status_code, 400)
-    #     self.assertEqual(response.json(), {"message": "User Does Not Exist"})
-    
+        self.assertEqual(response.json(), {"message": "WRONG_REQUEST"})
+
+    def test_post_withdrawal_type_error(self):
+        header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
+        data = {"amounts": "50000", "information": "출금 테스트"}
+
+        response = self.client.post(
+            "/transactions/withdrawal",
+            json.dumps(data),
+            content_type="application/json",
+            **header,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"message": "TYPE_ERROR"})
+
+    def test_post_withdrawal_key_error(self):
+        header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
+        data = {"amount": 50000, "information": "출금 테스트"}
+
+        response = self.client.post(
+            "/transactions/withdrawal",
+            json.dumps(data),
+            content_type="application/json",
+            **header,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"message": "KEY_ERROR"})
+
+    def test_withdrawal_user_does_not_exist(self):
+        header = {"HTTP_Authorization": f"Bearer {self.access_token2}"}
+        data = {"amounts": 5000, "information": "출금 테스트"}
+
+        response = self.client.post(
+            "/transactions/withdrawal",
+            json.dumps(data),
+            content_type="application/json",
+            **header,
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"message": "INVALID_USER"})
+
+
+class TransactionHistoryTest(TestCase):
+    maxDiff = None
+
+    def setUp(self):
+        self.client = Client()
+
+        TransactionType.objects.create(id=1, name="입금")
+
+        Bank.objects.create(id=1, name="농협은행")
+
+        deposit = Deposit.objects.create(
+            id                =1,
+            withdrawal_account="111-222-333",
+            withdrawal_bank_id=1,
+            deposit_account   ="444-555-666",
+            deposit_bank_id   =1,
+            balance           =30000,
+        )
+
+        User.objects.create(
+            id        =1, 
+            name      ="지윤", 
+            email     ="test@naver.com", 
+            password  ="1234!@qw", 
+            deposit_id=1
+        )
+
+        Transaction.objects.create(
+            type_id    =1,
+            information="테스트 입금",
+            amounts    =8000,
+            balance    =38000,
+            user_id    =1
+        )
+
+        deposit.balance += 8000
+        deposit.save()
+
+        self.access_token1 = jwt.encode(
+            {
+                "user_id": 1,
+            },
+            MY_SECRET_KEY,
+            algorithm,
+        )
+
+        self.access_token2 = jwt.encode(
+            {
+                "user_id": 2,
+            },
+            MY_SECRET_KEY,
+            algorithm,
+        )
+
+    def tearDown(self):
+        User.objects.all().delete()
+        Deposit.objects.all().delete()
+        Bank.objects.all().delete()
+        TransactionType.objects.all().delete()
+
+    def test_get_transaction_history(self):
+        header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
+
+        response = self.client.get(
+            "/transactions/history",
+            **header,
+        )
+
+        transaction = Transaction.objects.get(id=1)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            "results" :{
+                "transactions": [
+                    {
+                        "created_time": transaction.created_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "amounts": 8000,
+                        "balance": 38000,
+                        "information": "테스트 입금",
+                        "type": "입금",
+                    }
+                ],
+                "general_information": {
+                    "deposit_counts": 1,
+                    "deposit_sum_amounts": 8000,
+                    "withdrawal_counts": 0,
+                    "withdrawal_sum_amounts": 0,
+                    "blance": 38000,
+                },
+            }})
+
+    def test_get_transaction_history_value_error(self):
+        header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
+
+        response = self.client.get(
+            "/transactions/history?type_id=입금",
+            **header,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"message": "VALUE_ERROR"})
+
+    def test_get_transaction_history_invalid_query_format(self):
+        header = {"HTTP_Authorization": f"Bearer {self.access_token1}"}
+
+        response = self.client.get(
+            "/transactions/history?start_day=20210112",
+            **header,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"message": "INVALID_QUERY_FORMAT"})

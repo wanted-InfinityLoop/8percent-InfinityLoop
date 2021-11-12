@@ -10,81 +10,74 @@ from django.core.exceptions import ValidationError
 
 from transactions.models    import TransactionType, Transaction
 from users.models           import User
+from core.utils             import login_decorator
 
 
 class DepositView(View):
+    @login_decorator
     def post(self, request):
         try:
             data    = json.loads(request.body)
-            deposit = User.objects.get(id=1).deposit  # request.user.deposit
 
             if data["amounts"] <= 0:
-                return JsonResponse({"message": "Invalid Amount"}, status=400)
+                return JsonResponse({"message": "INVALID_INPUT_FORMAT"}, status=400)
+            
+            if type(data["amounts"]) is float:
+                return JsonResponse({"message": "INVALID_INPUT_FORMAT"}, status=400)
+
+            deposit = request.user.deposit
 
             with transaction.atomic():
-                transaction_info = Transaction.objects.create(
+                Transaction.objects.create(
                     type_id    =TransactionType.Type.DEPOSIT.value,
                     information=data["information"],
                     amounts    =data["amounts"],
                     balance    =deposit.balance + data["amounts"],
-                    user_id    =1,  # request.user가능
+                    user       =request.user,  
                 )
 
                 deposit.balance += data["amounts"]
                 deposit.save()
 
-            return JsonResponse(
-                {
-                    "message": "Success",
-                    "user balance": deposit.balance,
-                    "user transaction type": transaction_info.type.name,
-                    "user transaction amounts": transaction_info.amounts,
-                    "user transactions balance": transaction_info.balance,
-                },
-                status=201,
-            )
+            return JsonResponse({"message": "SUCCESS", "balance": deposit.balance}, status=201)
 
         except KeyError:
-            return JsonResponse({"message": "Key Error"}, status=400)
+            return JsonResponse({"message": "KEY_ERROR"}, status=400)
 
         except TypeError:
-            return JsonResponse({"message": "Type Error"}, status=400)
+            return JsonResponse({"message": "TYPE_ERROR"}, status=400)
 
 
 class WithdrawalView(View):
+    @login_decorator
     def post(self, request):
         try:
             data = json.loads(request.body)
-            amounts = data["amounts"]
-            information = data["information"]
-            # user             = request.user
-            user = User.objects.get(id=1)  # 추후 삭제할 예정
+            deposit = request.user.deposit
 
-            if amounts <= 0:
-                return JsonResponse({"message": "Invalid Input"}, status=400)
+            if data["amounts"] <= 0:
+                return JsonResponse({"message": "INVALID_INPUT_FORMAT"}, status=400)
 
-            if not amounts or not information:
-                return JsonResponse({"message": "No Input"}, status=400)
+            if data["amounts"] > deposit.balance:
+                return JsonResponse({"message": "WRONG_REQUEST"}, status=400)
 
-            # if not user:
-            #     return JsonResponse({"message": "User Does Not Exist"}, status=400)
-
-            if amounts > user.deposit.balance:
-                return JsonResponse({"message": "Wrong Request"}, status=400)
+            if type(data["amounts"]) is float:
+                return JsonResponse({"message": "INVALID_INPUT_FORMAT"}, status=400)
 
             with transaction.atomic():
-                new_transaction = Transaction.objects.create(
+                Transaction.objects.create(
                     type_id=TransactionType.Type.WITHDRAWAL.value,
-                    information=information,
-                    amounts=amounts,
-                    balance=user.deposit.balance - amounts,
-                    user=user,
+                    information=data["information"],
+                    amounts=data["amounts"],
+                    balance=deposit.balance - data["amounts"],
+                    user=request.user
                 )
-                user.deposit.balance = new_transaction.balance
-                user.deposit.save()
+
+                deposit.balance -= data["amounts"]
+                deposit.save()
 
             return JsonResponse(
-                {"message": "SUCESS", "balance": new_transaction.balance}, status=201
+                {"message": "SUCCESS", "balance": deposit.balance}, status=201
             )
 
         except TypeError:
@@ -93,16 +86,12 @@ class WithdrawalView(View):
         except KeyError:
             return JsonResponse({"message": "KEY_ERROR"}, status=400)
 
-        except User.DoesNotExist:
-            return JsonResponse({"message": "User Does Not Exist"}, status=400)  # login_decorator 붙이면 삭제하기
-
 
 class TransactionHistoryView(View):
-    # @login_decorator
+    @login_decorator
     def get(self, request):
         try:
-            user    = User.objects.get(id=1)
-            deposit = user.deposit
+            deposit = request.user.deposit
 
             PAGE   = int(request.GET.get("page", 1))
             LIMIT  = 20
@@ -110,10 +99,13 @@ class TransactionHistoryView(View):
 
             TYPE_ID    = request.GET.get("type_id", None)
             START_DATE = request.GET.get("start_day", date.today() - timedelta(days=90))
-            END_DATE   = request.GET.get("end_day", date.today())
+            END_DATE   = request.GET.get("end_day", None)
 
-            elements      = list(map(int, END_DATE.split("-")))
-            FULL_END_DATE = date(elements[0], elements[1], elements[2] + 1)
+            if END_DATE:
+                elements = list(map(int, END_DATE.split("-")))
+                FULL_END_DATE = date(elements[0], elements[1], elements[2] + 1)
+            else:
+                FULL_END_DATE = date.today() + timedelta(days=1)
 
             q = Q()
 
@@ -122,7 +114,7 @@ class TransactionHistoryView(View):
 
             q &= Q(created_time__range=(START_DATE, FULL_END_DATE))
 
-            transactions            = Transaction.objects.filter(user=1).filter(q).order_by("-created_time")
+            transactions            = Transaction.objects.filter(user=request.user).filter(q).order_by("-created_time")
             depoist_transactions    = transactions.filter(type_id=TransactionType.Type.DEPOSIT.value)
             withdrawal_transactions = transactions.filter(type_id=TransactionType.Type.WITHDRAWAL.value)
 
@@ -147,6 +139,9 @@ class TransactionHistoryView(View):
             }
 
             return JsonResponse({"results": result}, status=200)
+
+        except ValueError:
+            return JsonResponse({"message": "VALUE_ERROR"}, status=400)
 
         except ValidationError:
             return JsonResponse({"message": "INVALID_QUERY_FORMAT"}, status=400)

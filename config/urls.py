@@ -1,5 +1,6 @@
-from django.urls import path, include
+from django.urls      import path
+from django.urls.conf import include
 
 urlpatterns = [
-    path("transactions", include("transactions.urls")),
+    path("users", include('users.urls'))
 ]

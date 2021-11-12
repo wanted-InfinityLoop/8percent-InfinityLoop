@@ -9,9 +9,10 @@ from django.http         import HttpResponse, JsonResponse
 from users.models        import User
 from transactions.models import Bank, Deposit, Transaction
 from my_settings         import MY_SECRET_KEY
-from core.validation     import email_validation, password_validation
+from core.validation     import email_validation, password_validation, algorithm
 from uuid                import uuid4
 from django.db           import transaction
+from core.utils          import LoginDecorator
 
 class SignUpView(View):
     def post(self, request):
@@ -55,6 +56,30 @@ class SignUpView(View):
                     )
                 
                 return JsonResponse({"message" : "SUCCESS"}, status=200)
+        
+        except KeyError:
+            return JsonResponse({"message" : "KEY_ERROR"}, status=400)
+
+class SigninView(View):
+    def post(self, request):
+        
+        try:
+            data     = json.loads(request.body)
+            
+            email    = data["email"]
+            password = data["password"]
+            
+            user_check = User.objects.filter(email=email).first()
+            
+            if not user_check:
+                return JsonResponse({"message" : "INVALED_USER"}, status=400)
+            
+            if not bcrypt.checkpw(password.encode("utf-8"), user_check.password.encode("utf-8")):
+                return JsonResponse({"message" : "INVALID_USER_PASSWORD"}, status=400)
+            
+            access_token = jwt.encode({"user_id" : user_check.id}, MY_SECRET_KEY, algorithm)
+            
+            return JsonResponse({"message" : access_token}, status=200)
         
         except KeyError:
             return JsonResponse({"message" : "KEY_ERROR"}, status=400)

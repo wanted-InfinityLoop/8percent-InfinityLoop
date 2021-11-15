@@ -26,7 +26,7 @@
 | :---: | :---: | :---: | 
 | 공통 | 초기환경 설정, DB 모델링, postman api 문서 작성, README.md 작성, 배포, UnitTest | X |
 | [유동헌](https://github.com/dhhyy) | 회원가입, 로그인 기능| |
-| [하예준](https://github.com/TedJunny) | 거래내역 조회 기능 | |
+| [하예준](https://github.com/TedJunny) | 거래내역 조회 기능 | [회고 블로그 포스팅](https://velog.io/@hayejun1013/Project-8-%ED%8D%BC%EC%84%BC%ED%8A%B8-%ED%81%B4%EB%A1%A0-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8) |
 | [오지윤(팀장)](https://github.com/Odreystella) | 출금 기능| |
 | [손희정](https://github.com/heejung-gjt) | 입금 기능 |  |
 
